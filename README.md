@@ -25,7 +25,7 @@ The rough algorithm is following:
 1. Read shellcode's contents from file.
 2. Acquire all the necessary function pointers from `dbghelp.dll`, call `SymInitialize`
 3. Hook `kernel32!Sleep` pointing back to our callback.
-4. Inject and launch shellcode via `VirtualAlloc` + `memcpy` + `CreateThread`
+4. Inject and launch shellcode via `VirtualAlloc` + `memcpy` + `CreateThread`. A slight twist here is that our thread starts from a legitimate `ntdll!RltUserThreadStart+0x21` address to mimic other threads
 5. As soon as Beacon attempts to sleep, our `MySleep` callback gets invoked.
 6. Stack Spoofing begins. 
 7. Firstly we walk call stack of our current thread, utilising `ntdll!RtlCaptureContext` and `dbghelp!StackWalk64` 
@@ -65,6 +65,20 @@ This is how a call stack may look like when it is **NOT** spoofed:
 This in turn, when thread stack spoofing is enabled:
 
 ![spoofed](images/spoofed.png)
+
+Above we can see a sequence of `kernel32!CreateFileW` being implanted as return addresses. That's merely an example proving that we can manipulate return addresses.
+To better enhance quality of this call stack, one could prepare a list of addresses and then use them while picking subsequent frames for overwriting.
+
+For example, a following chain of addresses could be used:
+
+```
+KernelBase.dll!WaitForSingleObjectEx+0x8e
+KernelBase.dll!WaitForSingleObject+0x52
+kernel32!BaseThreadInitThunk+0x14
+ntdll!RtlUserThreadStart+0x21
+``` 
+
+When thinking about AVs, EDRs and other automated scanners - we don't need to care about how much legitimate our thread's call stack look, since these scanners only care whether a frame points back to a `SEC_IMAGE` memory pages, meaning it was a legitimate DLL/EXE call (and whether these DLLs are trusted/signed themselves). Thus, we don't need to bother that much about these chain of `CreateFileW` frames.
 
 
 ## Example run
