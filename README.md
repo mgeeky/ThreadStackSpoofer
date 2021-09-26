@@ -43,6 +43,19 @@ Function return addresses are scattered all around the thread's stack memory are
 This precise logic is provided by `walkCallStack` and `spoofCallStack` functions in `main.cpp`.
 
 
+## How do I use it?
+
+Look at the code and its implementation, understand the concept and re-implement the concept within your own Shellcode Loaders that you utilise to deliver your Red Team engagements.
+This is an yet another technique for advanced in-memory evasion that increases your Teams' chances for not getting caught by Anti-Viruses, EDRs and Malware Analysts taking look at your implants.
+
+While delivering your advanced shellcode loader, you might also want to implement:
+
+- **Process Heap Encryption** - take an inspiration from this blog post: [Hook Heaps and Live Free](https://www.arashparsa.com/hook-heaps-and-live-free/) - which can let you evade Beacon configuration extractos like [`BeaconEye`](https://github.com/CCob/BeaconEye)
+- **Change your Beacon's memory pages protection to `RW` (from `RX/RWX`) and encrypt their contents** before sleeping (that could evade scanners such as [`Moneta`](https://github.com/forrest-orr/moneta) or [`pe-sieve`](https://github.com/hasherezade/pe-sieve))
+- **Clean any leftovers from Reflective Loader** to avoid in-memory signatured detections
+- **Unhook everything you might have hooked** (such as AMSI, ETW, WLDP) before sleeping and then re-hook afterwards.
+
+
 ## Demo
 
 This is how a call stack may look like when it is **NOT** spoofed:
@@ -55,6 +68,17 @@ This in turn, when thread stack spoofing is enabled:
 
 
 ## Example run
+
+Use case:
+
+```
+C:\> ThreadStackSpoofer.exe <shellcode> <spoof>
+```
+
+Where:
+- `<shellcode>` is a path to the shellcode file
+- `<spoof>` when `1` or `true` will enable thread stack spoofing and anything else disables it.
+
 
 Example run that spoofs beacon's thread call stack:
 
