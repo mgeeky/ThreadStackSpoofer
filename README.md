@@ -43,11 +43,11 @@ This precise logic is provided by `walkCallStack` and `spoofCallStack` functions
 
 This is how a call stack may look like when it is **NOT** spoofed:
 
-![images/not-spoofed.png]
+![not-spoofed](images/not-spoofed.png)
 
 This in turn, when thread stack spoofing is enabled:
 
-![images/spoofed.png]
+![spoofed](images/spoofed.png)
 
 
 ## Example run
