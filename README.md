@@ -12,6 +12,8 @@ Especially demonstrated in this video:
 
 [Nighthawk - Thread Stack Spoofing](https://vimeo.com/581861665)
 
+**A note on wording** - some may argue that the technique presented in this implementation is not strictly **_Thread Stack Spoofing_** but rather _Call Stack Spoofing_ to some extent.
+I myself believe, that whatever wording is used here, the outcome stays similar to what was presented in an originally named technique - thus the borrowed name for this code. Since we're clobbering some pointers on the thread's stack, wouldn't we call it spoofing the stack anyway and ultimatley still resort to - _Thread Stack Spoofing_? The answer is left to the reader.
 
 ## How it works?
 
