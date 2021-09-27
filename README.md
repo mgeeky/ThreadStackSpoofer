@@ -145,7 +145,7 @@ WalkCallStack: Stack Trace:
                         Restored: 0x7ffeb7f74b60 -> 0x2550d3ccdd0
 ```
 
-## CAUTION
+## Word of caution
 
 If you plan on adding this functionality to your own shellcode loaders / toolings be sure to **AVOID** unhooking `kernel32.dll`.
 An attempt to unhook `kernel32` will restore original `Sleep` functionality preventing our callback from being called.
