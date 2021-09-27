@@ -13,7 +13,7 @@ Especially demonstrated in this video:
 [Nighthawk - Thread Stack Spoofing](https://vimeo.com/581861665)
 
 **A note on wording** - some may argue that the technique presented in this implementation is not strictly **_Thread Stack Spoofing_** but rather _Call Stack Spoofing_ to some extent.
-I myself believe, that whatever wording is used here, the outcome stays similar to what was presented in an originally named technique - thus the borrowed name for this code. Since we're clobbering some pointers on the thread's stack, wouldn't we call it spoofing the stack anyway and ultimatley still resort to - _Thread Stack Spoofing_? The answer is left to the reader.
+I myself believe, that whatever wording is used here, the outcome remains similar to what was presented in an originally named technique - thus the borrowed name for this code. Since we're clobbering some pointers on the thread's stack, wouldn't we call it spoofing the stack anyway and ultimatley still resort to - _Thread Stack Spoofing_? The answer is left to the reader.
 
 ## How it works?
 
@@ -50,11 +50,11 @@ This precise logic is provided by `walkCallStack` and `spoofCallStack` functions
 Look at the code and its implementation, understand the concept and re-implement the concept within your own Shellcode Loaders that you utilise to deliver your Red Team engagements.
 This is an yet another technique for advanced in-memory evasion that increases your Teams' chances for not getting caught by Anti-Viruses, EDRs and Malware Analysts taking look at your implants.
 
-While delivering your advanced shellcode loader, you might also want to implement:
+While developing your advanced shellcode loader, you might also want to implement:
 
-- **Process Heap Encryption** - take an inspiration from this blog post: [Hook Heaps and Live Free](https://www.arashparsa.com/hook-heaps-and-live-free/) - which can let you evade Beacon configuration extractos like [`BeaconEye`](https://github.com/CCob/BeaconEye)
+- **Process Heap Encryption** - take an inspiration from this blog post: [Hook Heaps and Live Free](https://www.arashparsa.com/hook-heaps-and-live-free/) - which can let you evade Beacon configuration extractors like [`BeaconEye`](https://github.com/CCob/BeaconEye)
 - **Change your Beacon's memory pages protection to `RW` (from `RX/RWX`) and encrypt their contents** before sleeping (that could evade scanners such as [`Moneta`](https://github.com/forrest-orr/moneta) or [`pe-sieve`](https://github.com/hasherezade/pe-sieve))
-- **Clean any leftovers from Reflective Loader** to avoid in-memory signatured detections
+- **Clear out any leftovers from Reflective Loader** to avoid in-memory signatured detections
 - **Unhook everything you might have hooked** (such as AMSI, ETW, WLDP) before sleeping and then re-hook afterwards.
 
 
