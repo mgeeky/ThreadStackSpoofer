@@ -65,10 +65,6 @@ struct StackTraceSpoofingMetadata
     bool                initialized;
     CallStackFrame      spoofedFrame[MaxStackFramesToSpoof];
     size_t              spoofedFrames;
-    ULONG_PTR           legitTebBaseLow;
-    ULONG_PTR           legitTebBaseHigh;
-    ULONG_PTR           origTebBaseLow;
-    ULONG_PTR           origTebBaseHigh;
 };
 
 struct HookedSleep

