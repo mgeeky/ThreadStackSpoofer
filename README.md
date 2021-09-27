@@ -145,6 +145,30 @@ WalkCallStack: Stack Trace:
                         Restored: 0x7ffeb7f74b60 -> 0x2550d3ccdd0
 ```
 
+## CAUTION
+
+If you plan on adding this functionality to your own shellcode loaders / toolings be sure to **AVOID** unhooking `kernel32.dll`.
+An attempt to unhook `kernel32` will restore original `Sleep` functionality preventing our callback from being called.
+If our callback is not called, the thread will be unable to spoof its own call stack by itself.
+
+If that's what you want to have, than you might need to run another, watchdog thread, making sure that the Beacons thread will get spoofed whenever it sleeps.
+
+If you're using Cobalt Strike and a BOF `unhook-bof` by Raphael's Mudge, be sure to check out my [Pull Request](https://github.com/rsmudge/unhook-bof/pull/2) that adds optional parameter to the BOF specifying libraries that should not be unhooked.
+
+This way you can maintain your hooks in kernel32:
+
+```
+beacon> unhook kernel32
+[*] Running unhook.
+    Will skip these modules: wmp.dll, kernel32.dll
+[+] host called home, sent: 9475 bytes
+[+] received output:
+ntdll.dll            <.text>
+Unhook is done.
+```
+
+[Modified `unhook-bof` with option to ignore specified modules](https://github.com/mgeeky/unhook-bof)
+
 
 ## Author
 
