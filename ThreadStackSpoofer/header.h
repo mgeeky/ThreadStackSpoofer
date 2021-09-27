@@ -32,6 +32,19 @@ typedef BOOL(__stdcall* typeSymInitialize)(
 
 typedef std::unique_ptr<std::remove_pointer<HANDLE>::type, decltype(&::CloseHandle)> HandlePtr;
 
+struct EXCEPTION_REGISTRATION
+{
+    void* handler;
+    void* prevHandler;
+};
+
+struct Start_Of_TEB
+{
+    EXCEPTION_REGISTRATION* ExceptionList;
+    void* StackBase;
+    void* StackLimit;
+};
+
 struct CallStackFrame
 {
     ULONG_PTR calledFrom;
@@ -51,9 +64,11 @@ struct StackTraceSpoofingMetadata
     LPVOID              pSymGetModuleBase64;
     bool                initialized;
     CallStackFrame      spoofedFrame[MaxStackFramesToSpoof];
-    CallStackFrame      mimicFrame[MaxStackFramesToSpoof];
     size_t              spoofedFrames;
-    size_t              mimickedFrames;
+    ULONG_PTR           legitTebBaseLow;
+    ULONG_PTR           legitTebBaseHigh;
+    ULONG_PTR           origTebBaseLow;
+    ULONG_PTR           origTebBaseHigh;
 };
 
 struct HookedSleep

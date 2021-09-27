@@ -94,7 +94,15 @@ Surely this project (and commercial implementation found in C2 frameworks) gives
 
 The research on the subject is not yet finished and hopefully will result in a better quality _Stack Spoofing_ in upcoming days. Nonetheless, I'm releasing what I got so far in hope of sparkling inspirations and interest community into further researching this area.
 
-Next areas improving the outcome are to research how we can _exchange_ or copy stacks (utilising [`GetCurrentThreadStackLimits`](https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadstacklimits)/`NtQueryInformationThread`) from a legitimate thread running `kernel32!Sleep(INFINITE)` or possibly by manipulating our Beacon's thread `TEB/TIB` structures and fields such as `TebBaseAddress` providing shadowed TEB. Another idea would be to play with `RBP/EBP` and `RSP/ESP` pointers on a paused Beacon's thread to change stacks in a similar manner to ROP chains.
+Next areas for improving the outcome are to research how we can _exchange_ or copy stacks with one of the following ideas:
+
+1. utilising [`GetCurrentThreadStackLimits`](https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadstacklimits)/`NtQueryInformationThread`) from a legitimate thread running `kernel32!Sleep(INFINITE)`
+
+2. manipulating our Beacon's thread `TEB/TIB` structures and fields such as `TebBaseAddress`, `NT_TIB.StackBase / NT_TIB.StackLimit` by swapping them with values taken from another legitimate thread.
+
+3. playing with `RBP/EBP` and `RSP/ESP` pointers on a paused Beacon's thread to change stacks in a similar manner to ROP chains - by swapping values of these registers while Beacon's thread is suspended.
+
+4. Create a new user stack with `RtlCreateUserStack` / `RtlFreeUserStack` and exchange stacks from a Beacons thread into that newly created one
 
 
 ## Example run
