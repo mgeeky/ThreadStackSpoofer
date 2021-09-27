@@ -1,4 +1,4 @@
-# Thread Stack Spoofing PoC
+# Thread Stack Spoofing / Call Stack Spoofing PoC
 
 A PoC implementation for an advanced in-memory evasion technique that spoofs Thread Call Stack. This technique allows to bypass thread-based memory examination rules and better hide shellcodes while in-process memory.
 
