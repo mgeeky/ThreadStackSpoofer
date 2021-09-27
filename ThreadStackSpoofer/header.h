@@ -51,7 +51,9 @@ struct StackTraceSpoofingMetadata
     LPVOID              pSymGetModuleBase64;
     bool                initialized;
     CallStackFrame      spoofedFrame[MaxStackFramesToSpoof];
+    CallStackFrame      mimicFrame[MaxStackFramesToSpoof];
     size_t              spoofedFrames;
+    size_t              mimickedFrames;
 };
 
 struct HookedSleep
@@ -87,7 +89,7 @@ static const DWORD Shellcode_Memory_Protection = PAGE_EXECUTE_READ;
 bool hookSleep();
 bool injectShellcode(std::vector<uint8_t>& shellcode);
 bool readShellcode(const char* path, std::vector<uint8_t>& shellcode);
-void walkCallStack(HANDLE hThread, CallStackFrame* frames, size_t maxFrames, size_t* numOfFrames, bool onlyBeaconFrames = false);
+void walkCallStack(HANDLE hThread, CallStackFrame* frames, size_t maxFrames, size_t* numOfFrames, bool onlyBeaconFrames, size_t framesToPreserve = Frames_To_Preserve);
 bool initStackSpoofing();
 bool fastTrampoline(bool installHook, BYTE* addressToHook, LPVOID jumpAddress, HookTrampolineBuffers* buffers = NULL);
 void spoofCallStack(bool overwriteOrRestore);

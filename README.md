@@ -12,9 +12,6 @@ Especially demonstrated in this video:
 
 [Nighthawk - Thread Stack Spoofing](https://vimeo.com/581861665)
 
-**A note on wording** - some may argue that the technique presented in this implementation is not strictly **_Thread Stack Spoofing_** but rather _Call Stack Spoofing_ to some extent.
-I myself believe, that whatever wording is used here, the outcome remains similar to what was presented in an originally named technique - thus the borrowed name for this code. Since we're clobbering some pointers on the thread's stack, wouldn't we call it spoofing the stack anyway and ultimatley still resort to - _Thread Stack Spoofing_? The answer is left to the reader.
-
 ## How it works?
 
 This program performs self-injection shellcode (roughly via classic `VirtualAlloc` + `memcpy` + `CreateThread`). 
@@ -47,6 +44,17 @@ _(the above image was borrowed from **Eli Bendersky's** post named [Stack frame 
 ```
 
 This precise logic is provided by `walkCallStack` and `spoofCallStack` functions in `main.cpp`.
+
+
+## Actually this is not (yet) a true stack spoofing
+
+As it's been pointed out to me, the technique here is not _yet_ truely holding up to its name for being _stack spoofer_. Since we're merely overwriting return addresses on the thread's stack, we're not spoofing the rest part of the stack itself and also, in its current form, where we leave a sequence of `::CreateFileW` addresses acting as an example, we're making the stack non-unwindable. Meaning, the stack looks rather odd at first sight. 
+
+However I'm aware of this fact, at the moment I've left it as is since I cared mostly about automated scanners that could iterate over processes, enumerate their threads, walk those threads stacks and pick up on any return address pointing back to a non-image memory (such as `SEC_PRIVATE` - the one allocated dynamically by `VirtuaAlloc` and friends). A focused malware analyst would immediately spot the oddity and consider the thread rather unusual, hunting down our implant. More than sure about it. Yet, I don't believe that nowadays automated scanners such as AV/EDR have sorts of heuristics implemented that would _actually walk each thread's stack_ to verify whether its un-windable.
+
+Surely with this project (and commercial implemention found in C2 frameworks) AV & EDR vendors have now received arguments to consider implementing these heuristics.
+
+The research on this subject is not yet finished and hopefully will result in better quality Stack Spoofing in upcoming days. Nonetheless, I'm releasing what I got so far, to sparkle inspirations and interest community into better researching this area.
 
 
 ## How do I use it?
@@ -159,7 +167,7 @@ If our callback is not called, the thread will be unable to spoof its own call s
 
 If that's what you want to have, than you might need to run another, watchdog thread, making sure that the Beacons thread will get spoofed whenever it sleeps.
 
-If you're using Cobalt Strike and a BOF `unhook-bof` by Raphael's Mudge, be sure to check out my [Pull Request](https://github.com/rsmudge/unhook-bof/pull/2) that adds optional parameter to the BOF specifying libraries that should not be unhooked.
+If you're using Cobalt Strike and a BOF `unhook-bof` by Raphael's Mudge, be sure to check out my [Pull Request](https://github.com/Cobalt-Strike/unhook-bof/pull/1) that adds optional parameter to the BOF specifying libraries that should not be unhooked.
 
 This way you can maintain your hooks in kernel32:
 

