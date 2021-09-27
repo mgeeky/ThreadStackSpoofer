@@ -40,7 +40,7 @@ Function return addresses are scattered all around the thread's stack memory are
 
 ![stack frame](images/frame0.png)
 
-(the above image was borrowed from _Eli Bendersky's_ post named [Stack frame layout on x86-64](https://eli.thegreenplace.net/2011/09/06/stack-frame-layout-on-x86-64/))
+_(the above image was borrowed from **Eli Bendersky's** post named [Stack frame layout on x86-64](https://eli.thegreenplace.net/2011/09/06/stack-frame-layout-on-x86-64/))_
 
 ```
 	*(PULONG_PTR)(frameAddr + sizeof(void*)) = Fake_Return_Address;
