@@ -39,6 +39,7 @@ The rough algorithm is following:
 Function return addresses are scattered all around the thread's stack memory area, pointed to by `RBP/EBP` register. In order to find them on the stack, we need to firstly collect frame pointers, then dereference them for overwriting:
 
 ![stack frame](images/frame0.png)
+
 (the above image was borrowed from _Eli Bendersky's_ post named [Stack frame layout on x86-64](https://eli.thegreenplace.net/2011/09/06/stack-frame-layout-on-x86-64/))
 
 ```
