@@ -48,7 +48,7 @@ This precise logic is provided by `walkCallStack` and `spoofCallStack` functions
 
 ## Actually this is not (yet) a true stack spoofing
 
-As it's been pointed out to me, the technique here is not _yet_ truely holding up to its name for being _stack spoofer_. Since we're merely overwriting return addresses on the thread's stack, we're not spoofing the rest part of the stack itself and also, in its current form, where we leave a sequence of `::CreateFileW` addresses acting as an example, we're making the stack non-unwindable. Meaning, the stack looks rather odd at first sight. 
+As it's been pointed out to me, the technique here is not _yet_ truly holding up to its name for being _stack spoofer_. Since we're merely overwriting return addresses on the thread's stack, we're not spoofing the rest part of the stack itself and also, in its current form, where we leave a sequence of `::CreateFileW` addresses acting as an example, we're making the stack non-unwindable. Meaning, the stack looks rather odd at first sight. 
 
 However I'm aware of this fact, at the moment I've left it as is since I cared mostly about automated scanners that could iterate over processes, enumerate their threads, walk those threads stacks and pick up on any return address pointing back to a non-image memory (such as `SEC_PRIVATE` - the one allocated dynamically by `VirtuaAlloc` and friends). A focused malware analyst would immediately spot the oddity and consider the thread rather unusual, hunting down our implant. More than sure about it. Yet, I don't believe that nowadays automated scanners such as AV/EDR have sorts of heuristics implemented that would _actually walk each thread's stack_ to verify whether its un-windable.
 
