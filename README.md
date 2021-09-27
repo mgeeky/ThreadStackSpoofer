@@ -56,7 +56,7 @@ Surely this project (and commercial implementation found in C2 frameworks) gives
 
 The research on the subject is not yet finished and hopefully will result in a better quality _Stack Spoofing_ in upcoming days. Nonetheless, I'm releasing what I got so far in hope of sparkling inspirations and interest community into further researching this area.
 
-Next areas improving the outcome are to research how we can _exchange_ or copy stacks from a legitimate thread running `kernel32!Sleep` or possibly by manipulating our Beacon's thread `TEB/TIB` structures and fields such as `TebBaseAddress` by providing shadowed TEB. Another idea is to play with `RBP/EBP` and `RSP/ESP` pointers on a paused Beacon's thread to change stacks in a similar manner to ROP chains.
+Next areas improving the outcome are to research how we can _exchange_ or copy stacks (utilising [`GetCurrentThreadStackLimits`](https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadstacklimits)/`NtQueryInformationThread` from a legitimate thread running `kernel32!Sleep` or possibly by manipulating our Beacon's thread `TEB/TIB` structures and fields such as `TebBaseAddress` by providing shadowed TEB. Another idea is to play with `RBP/EBP` and `RSP/ESP` pointers on a paused Beacon's thread to change stacks in a similar manner to ROP chains.
 
 
 ## How do I use it?
