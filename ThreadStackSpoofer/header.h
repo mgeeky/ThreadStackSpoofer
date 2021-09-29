@@ -32,19 +32,6 @@ typedef BOOL(__stdcall* typeSymInitialize)(
 
 typedef std::unique_ptr<std::remove_pointer<HANDLE>::type, decltype(&::CloseHandle)> HandlePtr;
 
-struct EXCEPTION_REGISTRATION
-{
-    void* handler;
-    void* prevHandler;
-};
-
-struct Start_Of_TEB
-{
-    EXCEPTION_REGISTRATION* ExceptionList;
-    void* StackBase;
-    void* StackLimit;
-};
-
 struct CallStackFrame
 {
     ULONG_PTR calledFrom;
@@ -98,7 +85,7 @@ static const size_t Frames_To_Preserve = 2;
 static const DWORD Shellcode_Memory_Protection = PAGE_EXECUTE_READ;
 
 bool hookSleep();
-bool injectShellcode(std::vector<uint8_t>& shellcode);
+bool injectShellcode(std::vector<uint8_t>& shellcode, HandlePtr& thread);
 bool readShellcode(const char* path, std::vector<uint8_t>& shellcode);
 void walkCallStack(HANDLE hThread, CallStackFrame* frames, size_t maxFrames, size_t* numOfFrames, bool onlyBeaconFrames, size_t framesToPreserve = Frames_To_Preserve);
 bool initStackSpoofing();
