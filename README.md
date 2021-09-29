@@ -7,12 +7,9 @@ A PoC implementation for an advanced in-memory evasion technique that spoofs Thr
 This is an example implementation for _Thread Stack Spoofing_ technique aiming to evade Malware Analysts, AVs and EDRs looking for references to shellcode's frames in an examined thread's call stack.
 The idea is to walk back thread's call stack and overwrite return addresses in subsequent function frames thus masquerading allocations containing malware's code.
 
-An implementation may differ, however the idea is roughly similar to what [MDSec's Nighthawk C2](https://www.mdsec.co.uk/nighthawk/) offers for its agents.
-Especially demonstrated in this video:
+An implementation may differ, however the idea is roughly similar to what commercial C2 frameworks offer for its agents.
 
-[Nighthawk - Thread Stack Spoofing](https://vimeo.com/581861665)
-
-This implementation along with my [ShellcodeFluctuation](https://github.com/mgeeky/ShellcodeFluctuation) brings Offensive Security community sample implementations to catch up on the offering made by commercial C2 products, so that we can do no worse in our Red Team toolings. 💪
+Implementation along with my [ShellcodeFluctuation](https://github.com/mgeeky/ShellcodeFluctuation) brings Offensive Security community sample implementations to catch up on the offering made by commercial C2 products, so that we can do no worse in our Red Team toolings. 💪
 
 
 ## How it works?
