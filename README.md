@@ -195,6 +195,20 @@ Unhook is done.
 
 ---
 
+## Final remark
+
+This PoC was designed to work with Cobalt Strike's Beacon shellcodes. The Beacon is known to call out to `kernel32!Sleep` to await further instructions from its C2. 
+This loader leverages that fact by hooking `Sleep` in order to perform its housekeeping. 
+
+This implementation might not work with other shellcodes in the market (such as _Meterpreter_) if they don't use `Sleep` to cool down. 
+Since this is merely a _Proof of Concept_ showing the technique, I don't intend on adding support for any other C2 framework.
+
+When you understand the concept, surely you'll be able to translate it into your shellcode requirements and adapt the solution for your advantage.
+
+Please do not open Github issues related to "this code doesn't work with XYZ shellcode", they'll be closed immediately.
+
+---
+
 ### ☕ Show Support ☕
 
 This and other projects are outcome of sleepless nights and **plenty of hard work**. If you like what I do and appreciate that I always give back to the community,
