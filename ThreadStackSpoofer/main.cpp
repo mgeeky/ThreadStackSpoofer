@@ -8,7 +8,7 @@ StackTraceSpoofingMetadata g_stackTraceSpoofing;
 
 void WINAPI MySleep(DWORD _dwMilliseconds)
 {
-    const volatile DWORD dwMilliseconds = _dwMilliseconds;
+    const register DWORD dwMilliseconds = _dwMilliseconds;
 
     // Perform this (current) thread call stack spoofing.
     spoofCallStack(true);
