@@ -30,6 +30,8 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
 
 The previous implementation, utilising `StackWalk64` can be accessed in this [commit c250724](https://github.com/mgeeky/ThreadStackSpoofer/tree/c2507248723d167fb2feddf50d35435a17fd61a2).
 
+This implementation works nicely on both `Debug` and `Release` under two architectures - `x64` and `x86`.
+
 
 ## Demo
 
