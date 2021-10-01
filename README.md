@@ -5,16 +5,15 @@ A PoC implementation for an advanced in-memory evasion technique that spoofs Thr
 ## Intro
 
 This is an example implementation for _Thread Stack Spoofing_ technique aiming to evade Malware Analysts, AVs and EDRs looking for references to shellcode's frames in an examined thread's call stack.
-The idea is to walk back thread's call stack and overwrite return addresses in subsequent function frames thus masquerading allocations containing malware's code.
-
-An implementation may differ, however the idea is roughly similar to what commercial C2 frameworks offer for its agents.
+The idea is to hide references to the shellcode on thread's call stack thus masquerading allocations containing malware's code.
 
 Implementation along with my [ShellcodeFluctuation](https://github.com/mgeeky/ShellcodeFluctuation) brings Offensive Security community sample implementations to catch up on the offering made by commercial C2 products, so that we can do no worse in our Red Team toolings. 💪
 
 
 ### Implementation has changed 
 
-Current implementation differs heavily to what was originally published. This is because I realised that there is a way simpler approach to terminate thread's call stack and hide shellcode's related frames by simply writing `0` to the return address of our handler:
+Current implementation differs heavily to what was originally published. 
+This is because I realised there is a way simpler approach to terminate thread's call stack processal and hide shellcode's related frames by simply writing `0` to the return address of the first frame we control:
 
 ```
 void WINAPI MySleep(DWORD _dwMilliseconds)
@@ -30,7 +29,7 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
 
 The previous implementation, utilising `StackWalk64` can be accessed in this [commit c250724](https://github.com/mgeeky/ThreadStackSpoofer/tree/c2507248723d167fb2feddf50d35435a17fd61a2).
 
-This implementation works nicely on both `Debug` and `Release` under two architectures - `x64` and `x86`.
+This implementation is much more stable and works nicely on both `Debug` and `Release` under two architectures - `x64` and `x86`.
 
 
 ## Demo
@@ -43,40 +42,38 @@ This in turn, when thread stack spoofing is enabled:
 
 ![spoofed](images/spoofed2.png)
 
-Above we can see that the last frame on our call stack is our `MySleep` callback. That immediately brings opportunities for IOCs hunting for threads having call stacks not unwinding into following two commonly expected system entry points:
+Above we can see that the last frame on our call stack is our `MySleep` callback. 
+One can wonder if that immediately brings opportunities for IOCs hunting for threads having call stacks not unwinding into following two commonly expected thread entry points within system libraries:
+
 ```
 kernel32!BaseThreadInitThunk+0x14
 ntdll!RtlUserThreadStart+0x21
 ```
 
-However a brief examination of my system shown, that there are plenty of threads having call stacks not unwinding to the above handlers:
+However the call stack of spoofed thread may look rather at first, a brief examination of my system shown, that there are other threads having call stacks not unwinding to the above handlers as well:
 
 ![legit call stack](images/legit-call-stack.png)
 
-The above screenshot shows unmodified, unhooked, thread of Total Commander x64.
+The above screenshot shows a thread of unmodified **Total Commander x64**. As we can see, its call stack pretty much resembles our own in terms of initial call stack frames.
 
-Why should we care about carefully faking our call stack when there are processes exhibiting traits that we can simply mimic?
+Why should we care about carefully faking our call stack when there are processes exhibiting traits that we can simply mimic? 
 
 
 ## How it works?
-
-This program performs self-injection shellcode (roughly via classic `VirtualAlloc` + `memcpy` + `CreateThread`). 
-Then when shellcode runs (this implementation specifically targets Cobalt Strike Beacon implants) a Windows function will be hooked intercepting moment when Beacon falls asleep `kernel32!Sleep`. 
-Whenever hooked `MySleep` function gets invoked, it will spoof its own call stack leading to this `MySleep` function and begin sleeping. 
-Having awaited for expected amount of time, the Thread's call stack will get restored assuring stable return and shellcode's execution resumption.
 
 The rough algorithm is following:
 
 1. Read shellcode's contents from file.
 2. Acquire all the necessary function pointers from `dbghelp.dll`, call `SymInitialize`
 3. Hook `kernel32!Sleep` pointing back to our callback.
-4. Inject and launch shellcode via `VirtualAlloc` + `memcpy` + `CreateThread`. A slight twist here is that our thread starts from a legitimate `ntdll!RltUserThreadStart+0x21` address to mimic other threads
+4. Inject and launch shellcode via `VirtualAlloc` + `memcpy` + `CreateThread`. The thread should start from our `runShellcode` function to avoid having Thread's _StartAddress_ point into somewhere unexpected and anomalous (such as `ntdll!RtlUserThreadStart+0x21`)
 5. As soon as Beacon attempts to sleep, our `MySleep` callback gets invoked.
-6. Overwrite last return address on the stack to `0` which effectively should finish the call stack.
+6. We then overwrite last return address on the stack to `0` which effectively should finish the call stack.
 7. Finally a call to `::SleepEx` is made to let the Beacon's sleep while waiting for further communication.
 8. After Sleep is finished, we restore previously saved original function return addresses and execution is resumed. 
 
-Function return addresses are scattered all around the thread's stack memory area, pointed to by `RBP/EBP` register. In order to find them on the stack, we need to firstly collect frame pointers, then dereference them for overwriting:
+Function return addresses are scattered all around the thread's stack memory area, pointed to by `RBP/EBP` register. 
+In order to find them on the stack, we need to firstly collect frame pointers, then dereference them for overwriting:
 
 ![stack frame](images/frame0.png)
 
@@ -86,7 +83,7 @@ _(the above image was borrowed from **Eli Bendersky's** post named [Stack frame 
 	*(PULONG_PTR)(frameAddr + sizeof(void*)) = Fake_Return_Address;
 ```
 
-This precise logic is provided by `walkCallStack` and `spoofCallStack` functions in `main.cpp`.
+Initial implementation of `ThreadStackSpoofer` did that in `walkCallStack` and `spoofCallStack` functions, however the current implementation shows that these efforts _are not required to maintain stealthy call stack_.
 
 
 ## Example run
