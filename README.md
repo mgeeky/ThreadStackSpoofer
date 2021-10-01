@@ -31,6 +31,31 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
 The previous implementation, utilising `StackWalk64` can be accessed in this [commit c250724](https://github.com/mgeeky/ThreadStackSpoofer/tree/c2507248723d167fb2feddf50d35435a17fd61a2).
 
 
+## Demo
+
+This is how a call stack may look like when it is **NOT** spoofed:
+
+![not-spoofed](images/not-spoofed.png)
+
+This in turn, when thread stack spoofing is enabled:
+
+![spoofed](images/spoofed2.png)
+
+Above we can see that the last frame on our call stack is our `MySleep` callback. That immediately brings opportunities for IOCs hunting for threads having call stacks not unwinding into following two commonly expected system entry points:
+```
+kernel32!BaseThreadInitThunk+0x14
+ntdll!RtlUserThreadStart+0x21
+```
+
+However a brief examination of my system shown, that there are plenty of threads having call stacks not unwinding to the above handlers:
+
+![legit call stack](images/legit-call-stack.png)
+
+The above screenshot shows unmodified, unhooked, thread of Total Commander x64.
+
+Why should we care about carefully faking our call stack when there are processes exhibiting traits that we can simply mimic?
+
+
 ## How it works?
 
 This program performs self-injection shellcode (roughly via classic `VirtualAlloc` + `memcpy` + `CreateThread`). 
@@ -62,31 +87,41 @@ _(the above image was borrowed from **Eli Bendersky's** post named [Stack frame 
 This precise logic is provided by `walkCallStack` and `spoofCallStack` functions in `main.cpp`.
 
 
-## Demo
+## Example run
 
-This is how a call stack may look like when it is **NOT** spoofed:
+Use case:
 
-![not-spoofed](images/not-spoofed.png)
-
-This in turn, when thread stack spoofing is enabled:
-
-![spoofed](images/spoofed2.png)
-
-Above we can see that the last frame on our call stack is our `MySleep` callback. That immediately brings opportunities for IOCs hunting for threads having call stacks not unwinding into following two commonly expected system entry points:
 ```
-kernel32!BaseThreadInitThunk+0x14
-ntdll!RtlUserThreadStart+0x21
+C:\> ThreadStackSpoofer.exe <shellcode> <spoof>
 ```
 
-However a brief examination of my system shown, that there are plenty of threads having call stacks not unwinding to the above handlers:
-
-![legit call stack](images/legit-call-stack.png)
-
-The above screenshot shows unmodified, unhooked, thread of Total Commander x64.
-
-Why should we care about carefully faking our call stack when there are processes exhibiting traits that we can simply mimic?
+Where:
+- `<shellcode>` is a path to the shellcode file
+- `<spoof>` when `1` or `true` will enable thread stack spoofing and anything else disables it.
 
 
+Example run that spoofs beacon's thread call stack:
+
+```
+PS D:\dev2\ThreadStackSpoofer> .\x64\Release\ThreadStackSpoofer.exe .\tests\beacon64.bin 1
+[.] Reading shellcode bytes...
+[.] Hooking kernel32!Sleep...
+[.] Injecting shellcode...
+[+] Shellcode is now running.
+[>] Original return address: 0x1926747bd51. Finishing call stack...
+
+===> MySleep(5000)
+
+[<] Restoring original return address...
+[>] Original return address: 0x1926747bd51. Finishing call stack...
+
+===> MySleep(5000)
+
+[<] Restoring original return address...
+[>] Original return address: 0x1926747bd51. Finishing call stack...
+```
+
+---
 
 ## How do I use it?
 
@@ -101,28 +136,21 @@ While developing your advanced shellcode loader, you might also want to implemen
 - **Unhook everything you might have hooked** (such as AMSI, ETW, WLDP) before sleeping and then re-hook afterwards.
 
 
+---
+
 ## Actually this is not (yet) a true stack spoofing
 
-As it's been pointed out to me, the technique here is not _yet_ truly holding up to its name for being a _stack spoofer_. Since we're merely overwriting return addresses on the thread's stack, we're not spoofing the remaining areas of the stack itself. Moreover we leave a sequence of `::CreateFileW` addresses which looks very odd and let the thread be unable to unwind its stack. That's because `CreateFile` was meant to solely act as an example, we're making the stack non-unwindable but still obscuring references to our shellcode memory pages. 
+As it's been pointed out to me, the technique here is not _yet_ truly holding up to its name for being a _stack spoofer_. Since we're merely overwriting return addresses on the thread's stack, we're not spoofing the remaining areas of the stack itself. Moreover we're leaving our call stack _unwindable_ meaking it look anomalous since the system will not be able to properly walk the entire call stack frames chain. 
 
 However I'm aware of these shortcomings, at the moment I've left it as is since I cared mostly about evading automated scanners that could iterate over processes, enumerate their threads, walk those threads stacks and pick up on any return address pointing back to a non-image memory (such as `SEC_PRIVATE` - the one allocated dynamically by `VirtuaAlloc` and friends). A focused malware analyst would immediately spot the oddity and consider the thread rather unusual, hunting down our implant. More than sure about it. Yet, I don't believe that nowadays automated scanners such as AV/EDR have sorts of heuristics implemented that would _actually walk each thread's stack_ to verify whether its un-windable `¯\_(ツ)_/¯` .
 
 Surely this project (and commercial implementation found in C2 frameworks) gives AV & EDR vendors arguments to consider implementing appropriate heuristics covering such a novel evasion technique.
 
-The research on the subject is not yet finished and hopefully will result in a better quality _Stack Spoofing_ in upcoming days. Nonetheless, I'm releasing what I got so far in hope of sparkling inspirations and interest community into further researching this area.
-
-Next areas for improving the outcome are to research how we can _exchange_ or copy stacks with one of the following ideas:
-
-1. utilising [`GetCurrentThreadStackLimits`](https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadstacklimits)/`NtQueryInformationThread`) from a legitimate thread running `kernel32!Sleep(INFINITE)`
-
-2. manipulating our Beacon's thread `TEB/TIB` structures and fields such as `TebBaseAddress`, `NT_TIB.StackBase / NT_TIB.StackLimit` by swapping them with values taken from another legitimate thread.
-
-3. playing with `RBP/EBP` and `RSP/ESP` pointers on a paused Beacon's thread to change stacks in a similar manner to ROP chains - by swapping values of these registers while Beacon's thread is suspended.
-
-4. Create a new user stack with `RtlCreateUserStack` / `RtlFreeUserStack` and exchange stacks from a Beacons thread into that newly created one
+In order to improve this technique, one can aim for a true _Thread Stack Spoofer_ by inserting carefully crafted fake stack frames established in an reverse-unwinding process. 
+Read more on this idea below.
 
 
-## Implementing a true Thread Stack Spoofer
+### Implementing a true Thread Stack Spoofer
 
 Hours-long conversation with [namazso](https://twitter.com/namazso) teached me, that in order to aim for a proper thread stack spoofer we would need to reverse x64 call stack unwinding process.
 Firstly, one needs to carefully acknowledge the stack unwinding process explained in (a) linked below. The system when traverses Thread call stack on x64 architecture will not simply rely on return addresses scattered around the thread's stack, but rather it:
@@ -197,40 +225,7 @@ This PoC does not follows replicate this algorithm, because my current understan
 - **c)** [`.pdata` section](https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#the-pdata-section)
 - **d)** [another sample implementation of `RtlpUnwindPrologue`](https://github.com/hzqst/unicorn_pe/blob/master/unicorn_pe/except.cpp#L773)
 
-
-## Example run
-
-Use case:
-
-```
-C:\> ThreadStackSpoofer.exe <shellcode> <spoof>
-```
-
-Where:
-- `<shellcode>` is a path to the shellcode file
-- `<spoof>` when `1` or `true` will enable thread stack spoofing and anything else disables it.
-
-
-Example run that spoofs beacon's thread call stack:
-
-```
-PS D:\dev2\ThreadStackSpoofer> .\x64\Release\ThreadStackSpoofer.exe .\tests\beacon64.bin 1
-[.] Reading shellcode bytes...
-[.] Hooking kernel32!Sleep...
-[.] Injecting shellcode...
-[+] Shellcode is now running.
-[>] Original return address: 0x1926747bd51. Finishing call stack...
-
-===> MySleep(5000)
-
-[<] Restoring original return address...
-[>] Original return address: 0x1926747bd51. Finishing call stack...
-
-===> MySleep(5000)
-
-[<] Restoring original return address...
-[>] Original return address: 0x1926747bd51. Finishing call stack...
-```
+---
 
 ## Word of caution
 
