@@ -19,7 +19,8 @@ This is because I realised there is a way simpler approach to terminate thread's
 void WINAPI MySleep(DWORD _dwMilliseconds)
 {
     [...]
-    PULONG_PTR overwrite = (PULONG_PTR)_AddressOfReturnAddress();
+    auto overwrite = (PULONG_PTR)_AddressOfReturnAddress();
+    const auto origReturnAddress = *overwrite;
     *overwrite = 0;
 
     [...]

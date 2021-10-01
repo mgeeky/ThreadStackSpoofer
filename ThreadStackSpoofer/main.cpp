@@ -12,8 +12,8 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
     //
     // Locate this stack frame's return address.
     // 
-    PULONG_PTR overwrite = (PULONG_PTR)_AddressOfReturnAddress();
-    const register ULONG_PTR origReturnAddress = *overwrite;
+    auto overwrite = (PULONG_PTR)_AddressOfReturnAddress();
+    const auto origReturnAddress = *overwrite;
 
     log("[>] Original return address: 0x", 
         std::hex, std::setw(8), std::setfill('0'), origReturnAddress, 
