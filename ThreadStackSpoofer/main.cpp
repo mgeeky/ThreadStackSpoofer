@@ -5,10 +5,8 @@
 HookedSleep g_hookedSleep;
 
 
-void WINAPI MySleep(DWORD _dwMilliseconds)
+void WINAPI MySleep(DWORD dwMilliseconds)
 {
-    const register DWORD dwMilliseconds = _dwMilliseconds;
-
     //
     // Locate this stack frame's return address.
     // 
@@ -28,10 +26,14 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
 
     log("\n===> MySleep(", std::dec, dwMilliseconds, ")\n");
 
+    //
     // Perform sleep emulating originally hooked functionality.
+    //
     ::SleepEx(dwMilliseconds, false);
 
+    //
     // Restore original thread's call stack.
+    //
     log("[<] Restoring original return address...");
     *overwrite = origReturnAddress;
 }
