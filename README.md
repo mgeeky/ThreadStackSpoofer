@@ -12,6 +12,25 @@ An implementation may differ, however the idea is roughly similar to what commer
 Implementation along with my [ShellcodeFluctuation](https://github.com/mgeeky/ShellcodeFluctuation) brings Offensive Security community sample implementations to catch up on the offering made by commercial C2 products, so that we can do no worse in our Red Team toolings. 💪
 
 
+### Implementation has changed 
+
+Current implementation differs heavily to what was originally published. This is because I realised that there is a way simpler approach to terminate thread's call stack and hide shellcode's related frames by simply writing `0` to the return address of our handler:
+
+```
+void WINAPI MySleep(DWORD _dwMilliseconds)
+{
+    [...]
+    PULONG_PTR overwrite = (PULONG_PTR)_AddressOfReturnAddress();
+    *overwrite = 0;
+
+    [...]
+    *overwrite = origReturnAddress;
+}
+```
+
+The previous implementation, utilising `StackWalk64` can be accessed in this [commit c250724](https://github.com/mgeeky/ThreadStackSpoofer/tree/c2507248723d167fb2feddf50d35435a17fd61a2).
+
+
 ## How it works?
 
 This program performs self-injection shellcode (roughly via classic `VirtualAlloc` + `memcpy` + `CreateThread`). 
@@ -26,12 +45,9 @@ The rough algorithm is following:
 3. Hook `kernel32!Sleep` pointing back to our callback.
 4. Inject and launch shellcode via `VirtualAlloc` + `memcpy` + `CreateThread`. A slight twist here is that our thread starts from a legitimate `ntdll!RltUserThreadStart+0x21` address to mimic other threads
 5. As soon as Beacon attempts to sleep, our `MySleep` callback gets invoked.
-6. Stack Spoofing begins. 
-7. Firstly we walk call stack of our current thread, utilising `ntdll!RtlCaptureContext` and `dbghelp!StackWalk64` 
-8. We save all of the stack frames that match our `seems-to-be-beacon-frame` criterias (such as return address points back to a memory being `MEM_PRIVATE` or `Type = 0`, or memory's protection flags are not `R/RX/RWX`)
-9. We terate over collected frames (gathered function frame pointers `RBP/EBP` - in `frame.frameAddr`) and overwrite _on-stack_ return addresses with a fake `::CreateFileW` address.
-10. Finally a call to `::SleepEx` is made to let the Beacon's sleep while waiting for further communication.
-11. After Sleep is finished, we restore previously saved original function return addresses and execution is resumed. 
+6. Overwrite last return address on the stack to `0` which effectively should finish the call stack.
+7. Finally a call to `::SleepEx` is made to let the Beacon's sleep while waiting for further communication.
+8. After Sleep is finished, we restore previously saved original function return addresses and execution is resumed. 
 
 Function return addresses are scattered all around the thread's stack memory area, pointed to by `RBP/EBP` register. In order to find them on the stack, we need to firstly collect frame pointers, then dereference them for overwriting:
 
@@ -54,21 +70,22 @@ This is how a call stack may look like when it is **NOT** spoofed:
 
 This in turn, when thread stack spoofing is enabled:
 
-![spoofed](images/spoofed.png)
+![spoofed](images/spoofed2.png)
 
-Above we can see a sequence of `kernel32!CreateFileW` being implanted as return addresses. That's merely an example proving that we can manipulate return addresses.
-To better enhance quality of this call stack, one could prepare a list of addresses and then use them while picking subsequent frames for overwriting.
-
-For example, a following chain of addresses could be used:
-
+Above we can see that the last frame on our call stack is our `MySleep` callback. That immediately brings opportunities for IOCs hunting for threads having call stacks not unwinding into following two commonly expected system entry points:
 ```
-KernelBase.dll!WaitForSingleObjectEx+0x8e
-KernelBase.dll!WaitForSingleObject+0x52
 kernel32!BaseThreadInitThunk+0x14
 ntdll!RtlUserThreadStart+0x21
-``` 
+```
 
-When thinking about AVs, EDRs and other automated scanners - we don't need to care about how much legitimate our thread's call stack look, since these scanners only care whether a frame points back to a `SEC_IMAGE` memory pages, meaning it was a legitimate DLL/EXE call (and whether these DLLs are trusted/signed themselves). Thus, we don't need to bother that much about these chain of `CreateFileW` frames.
+However a brief examination of my system shown, that there are plenty of threads having call stacks not unwinding to the above handlers:
+
+![legit call stack](images/legit-call-stack.png)
+
+The above screenshot shows unmodified, unhooked, thread of Total Commander x64.
+
+Why should we care about carefully faking our call stack when there are processes exhibiting traits that we can simply mimic?
+
 
 
 ## How do I use it?
@@ -105,6 +122,82 @@ Next areas for improving the outcome are to research how we can _exchange_ or co
 4. Create a new user stack with `RtlCreateUserStack` / `RtlFreeUserStack` and exchange stacks from a Beacons thread into that newly created one
 
 
+## Implementing a true Thread Stack Spoofer
+
+Hours-long conversation with [namazso](https://twitter.com/namazso) teached me, that in order to aim for a proper thread stack spoofer we would need to reverse x64 call stack unwinding process.
+Firstly, one needs to carefully acknowledge the stack unwinding process explained in (a) linked below. The system when traverses Thread call stack on x64 architecture will not simply rely on return addresses scattered around the thread's stack, but rather it:
+
+1. takes return address
+2. attempts to identify function containing that address (with [RtlLookupFunctionEntry](https://docs.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtllookupfunctionentry))
+3. That function returns `RUNTIME_FUNCTION`, `UNWIND_INFO` and `UNWIND_CODE` structures. These structures describe where are the function's beginning address, ending address, and where are all the code sequences that modify `RBP` or `RSP`. 
+4. System needs to know about all stack & frame pointers modifications that happened in each function across the Call Stack to then virtually _rollback_ these changes and virtually restore call stack pointers when a call to the processed call stack frame happened (this is implemented in [RtlVirtualUnwind](https://docs.microsoft.com/ru-ru/windows/win32/api/winnt/nf-winnt-rtlvirtualunwind))
+5. The system processes all `UNWIND_CODE`s that examined function exhbits to precisely compute the location of that frame's return address and stack pointer value.
+6. Through this emulation, the System is able to walk down the call stacks chain and effectively "unwind" the call stack.
+
+In order to interfere with this process we wuold need to _revert it_ by having our reverted form of `RtlVirtualUnwind`. We would need to iterate over functions defined in a module (let's be it `kernel32`), scan each function's `UNWIND_CODE` codes and closely emulate it backwards (as compared to `RtlVirtualUnwind` and precisely `RtlpUnwindPrologue`) in order to find locations on the stack, where to put our fake return addresses.
+
+[namazso](https://twitter.com/namazso) mentions the necessity to introduce 3 fake stack frames to nicely stitch the call stack:
+
+1. A "desync" frame (consider it as a _gadget-frame_) that unwinds differently compared to the caller of our `MySleep` (having differnt `UWOP` - Unwind Operation code). We do this by looking through all functions from a module, looking through their UWOPs, calculating how big the fake frame should be. This frame must have UWOPS **different** than our `MySleep`'s caller.
+2. Next frame that we want to find is a function that unwindws by popping into `RBP` from the stack - basically through `UWOP_PUSH_NONVOL` code.
+3. Third frame we need a function that restores `RSP` from `RBP` through the code `UWOP_SET_FPREG`
+
+The restored `RSP` must be set with the `RSP` taken from wherever control flow entered into our `MySleep` so that all our frames become hidden, as a result of third gadget unwinding there.
+
+In order to begin the process, one can iterate over executable's `.pdata` by dereferencing `IMAGE_DIRECTORY_ENTRY_EXCEPTION` data directory entry.
+Consider below example:
+
+```
+    ULONG_PTR imageBase = (ULONG_PTR)GetModuleHandleA("kernel32");
+    PIMAGE_NT_HEADERS64 pNthdrs = PIMAGE_NT_HEADERS64(imageBase + PIMAGE_DOS_HEADER(imageBase)->e_lfanew);
+
+    auto excdir = pNthdrs->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+    if (excdir.Size == 0 || excdir.VirtualAddress == 0)
+        return;
+
+    auto begin = PRUNTIME_FUNCTION(excdir.VirtualAddress + imageBase);
+    auto end = PRUNTIME_FUNCTION(excdir.VirtualAddress + imageBase + excdir.Size);
+
+    UNWIND_HISTORY_TABLE mshist = { 0 };
+    DWORD64 imageBase2 = 0;
+
+    PRUNTIME_FUNCTION currFrame = RtlLookupFunctionEntry(
+        (DWORD64)caller,
+        &imageBase2,
+        &mshist
+    );
+
+    UNWIND_INFO *mySleep = (UNWIND_INFO*)(currFrame->UnwindData + imageBase);
+    UNWIND_CODE myFrameUwop = (UNWIND_CODE)(mySleep->UnwindCodes[0]);
+
+    log("1. MySleep RIP UWOP: ", myFrameUwop.UnwindOpcode);
+
+    for (PRUNTIME_FUNCTION it = begin; it < end; ++it)
+    {
+        UNWIND_INFO* unwindData = (UNWIND_INFO*)(it->UnwindData + imageBase);
+        UNWIND_CODE frameUwop = (UNWIND_CODE)(unwindData->UnwindCodes[0]);
+
+        if (frameUwop.UnwindOpcode != myFrameUwop.UnwindOpcode)
+        {
+            // Found candidate function for a desynch gadget frame
+
+        }
+    }
+```
+
+The process is a bit convoluted, yet boils down to reverting thread's call stack unwinding process by substituting arbitrary stack frames with carefully selected other ones, in a ROP alike approach.
+
+This PoC does not follows replicate this algorithm, because my current understanding allows me to accept the call stack finishing on an `EXE`-based stack frame and I don't want to overcompliate neither my shellcode loaders nor this PoC. Leaving the exercise of implementing this and sharing publicly to a keen reader. Or maybe I'll sit and have a try on doing this myself given some more spare time :)
+
+
+**More information**:
+
+a) [x64 exception handling - Stack Unwinding process explained](https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64?view=msvc-160)
+b) [Sample implementation of `RtlpUnwindPrologue` and `RtlVirtualUnwind`](https://github.com/mic101/windows/blob/master/WRK-v1.2/base/ntos/rtl/amd64/exdsptch.c)
+c) [`.pdata` section](https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#the-pdata-section)
+d) [another sample implementation of `RtlpUnwindPrologue`](https://github.com/hzqst/unicorn_pe/blob/master/unicorn_pe/except.cpp#L773)
+
+
 ## Example run
 
 Use case:
@@ -121,52 +214,22 @@ Where:
 Example run that spoofs beacon's thread call stack:
 
 ```
-C:\> ThreadStackSpoofer.exe beacon64.bin 1
+PS D:\dev2\ThreadStackSpoofer> .\x64\Release\ThreadStackSpoofer.exe .\tests\beacon64.bin 1
 [.] Reading shellcode bytes...
-[.] Thread call stack will be spoofed.
-[+] Stack spoofing initialized.
 [.] Hooking kernel32!Sleep...
 [.] Injecting shellcode...
-
-WalkCallStack: Stack Trace:
-        2.      calledFrom: 0x7ff7c8ba7f54 - stack: 0xdc5eaffbd0 - frame: 0xdc5eaffce0 - ret: 0x2550d3ebd51 - skip? 0
-        3.      calledFrom: 0x2550d3ebd51 - stack: 0xdc5eaffcf0 - frame: 0xdc5eaffce8 - ret: 0x1388 - skip? 0
-        4.      calledFrom: 0x    1388 - stack: 0xdc5eaffcf8 - frame: 0xdc5eaffcf0 - ret: 0x2550d1ff760 - skip? 0
-        5.      calledFrom: 0x2550d1ff760 - stack: 0xdc5eaffd00 - frame: 0xdc5eaffcf8 - ret: 0x1b000100000004 - skip? 0
-        6.      calledFrom: 0x1b000100000004 - stack: 0xdc5eaffd08 - frame: 0xdc5eaffd00 - ret: 0xd00017003a0001 - skip? 0
-        7.      calledFrom: 0xd00017003a0001 - stack: 0xdc5eaffd10 - frame: 0xdc5eaffd08 - ret: 0x2550d5b7040 - skip? 0
-        8.      calledFrom: 0x2550d5b7040 - stack: 0xdc5eaffd18 - frame: 0xdc5eaffd10 - ret: 0x2550d3ccd9f - skip? 0
-        9.      calledFrom: 0x2550d3ccd9f - stack: 0xdc5eaffd20 - frame: 0xdc5eaffd18 - ret: 0x2550d3ccdd0 - skip? 0
-                        Spoofed: 0x2550d3ebd51 -> 0x7ffeb7f74b60
-                        Spoofed: 0x00001388 -> 0x7ffeb7f74b60
-                        Spoofed: 0x2550d1ff760 -> 0x7ffeb7f74b60
-                        Spoofed: 0x1b000100000004 -> 0x7ffeb7f74b60
-                        Spoofed: 0xd00017003a0001 -> 0x7ffeb7f74b60
-                        Spoofed: 0x2550d5b7040 -> 0x7ffeb7f74b60
-                        Spoofed: 0x2550d3ccd9f -> 0x7ffeb7f74b60
-                        Spoofed: 0x2550d3ccdd0 -> 0x7ffeb7f74b60
+[+] Shellcode is now running.
+[>] Original return address: 0x1926747bd51. Finishing call stack...
 
 ===> MySleep(5000)
 
-[+] Shellcode is now running.
+[<] Restoring original return address...
+[>] Original return address: 0x1926747bd51. Finishing call stack...
 
-WalkCallStack: Stack Trace:
-        2.      calledFrom: 0x7ff7c8ba7f84 - stack: 0xdc5eaffbd0 - frame: 0xdc5eaffce0 - ret: 0x7ffeb7f74b60 - skip? 1
-        3.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffcf0 - frame: 0xdc5eaffce8 - ret: 0x7ffeb7f74b60 - skip? 1
-        4.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffcf8 - frame: 0xdc5eaffcf0 - ret: 0x7ffeb7f74b60 - skip? 1
-        5.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd00 - frame: 0xdc5eaffcf8 - ret: 0x7ffeb7f74b60 - skip? 1
-        6.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd08 - frame: 0xdc5eaffd00 - ret: 0x7ffeb7f74b60 - skip? 1
-        7.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd10 - frame: 0xdc5eaffd08 - ret: 0x7ffeb7f74b60 - skip? 1
-        8.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd18 - frame: 0xdc5eaffd10 - ret: 0x7ffeb7f74b60 - skip? 1
-        9.      calledFrom: 0x7ffeb7f74b60 - stack: 0xdc5eaffd20 - frame: 0xdc5eaffd18 - ret: 0x7ffeb7f74b60 - skip? 1
-                        Restored: 0x7ffeb7f74b60 -> 0x2550d3ebd51
-                        Restored: 0x7ffeb7f74b60 -> 0x1388
-                        Restored: 0x7ffeb7f74b60 -> 0x2550d1ff760
-                        Restored: 0x7ffeb7f74b60 -> 0x1b000100000004
-                        Restored: 0x7ffeb7f74b60 -> 0xd00017003a0001
-                        Restored: 0x7ffeb7f74b60 -> 0x2550d5b7040
-                        Restored: 0x7ffeb7f74b60 -> 0x2550d3ccd9f
-                        Restored: 0x7ffeb7f74b60 -> 0x2550d3ccdd0
+===> MySleep(5000)
+
+[<] Restoring original return address...
+[>] Original return address: 0x1926747bd51. Finishing call stack...
 ```
 
 ## Word of caution

