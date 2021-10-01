@@ -10,6 +10,12 @@ typedef void  (WINAPI* typeSleep)(
     DWORD dwMilis
     );
 
+typedef DWORD(NTAPI* typeNtFlushInstructionCache)(
+    HANDLE ProcessHandle,
+    PVOID BaseAddress,
+    ULONG NumberOfBytesToFlush
+    );
+
 typedef std::unique_ptr<std::remove_pointer<HANDLE>::type, decltype(&::CloseHandle)> HandlePtr;
 
 struct HookedSleep
