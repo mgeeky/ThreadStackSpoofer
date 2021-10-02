@@ -44,14 +44,14 @@ This in turn, when thread stack spoofing is enabled:
 ![spoofed](images/spoofed2.png)
 
 Above we can see that the last frame on our call stack is our `MySleep` callback. 
-One can wonder if that immediately brings opportunities for IOCs hunting for threads having call stacks not unwinding into following two commonly expected thread entry points within system libraries:
+One can wonder does it immediately brings opportunities new IOCs? Hunting rules can look for threads having call stacks not unwinding into following expected thread entry points located within system libraries:
 
 ```
 kernel32!BaseThreadInitThunk+0x14
 ntdll!RtlUserThreadStart+0x21
 ```
 
-However the call stack of spoofed thread may look rather at first, a brief examination of my system shown, that there are other threads having call stacks not unwinding to the above handlers as well:
+However the call stack of the spoofed thread may look rather odd at first, a brief examination of my system shown, that there are other threads not unwinding to the above entry points as well:
 
 ![legit call stack](images/legit-call-stack.png)
 
