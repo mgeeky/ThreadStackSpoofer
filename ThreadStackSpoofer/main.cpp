@@ -134,7 +134,7 @@ bool hookSleep()
 
     g_hookedSleep.origSleep = reinterpret_cast<typeSleep>(Sleep);
 
-    if (!fastTrampoline(true, (BYTE*)::Sleep, &MySleep, &buffers))
+    if (!fastTrampoline(true, (BYTE*)::Sleep, (void*)&MySleep, &buffers))
         return false;
 
     return true;
